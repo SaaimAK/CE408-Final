@@ -1,0 +1,14 @@
+{
+  "name": "519-notification-service",
+  "version": "1.0.0",
+  "description": "Notification consumer service for DataHive Inc.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
+  }
+}

@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  519_postgres:
+    image: postgres:15
+    container_name: 519_postgres
+    environment:
+      POSTGRES_USER: datahive
+      POSTGRES_PASSWORD: datahive123
+      POSTGRES_DB: datahive
+    ports:
+      - "5432:5432"
+    volumes:
+      - 519_postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - 519_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datahive"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  519_rabbitmq:
+    image: rabbitmq:3-management
+    container_name: 519_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: datahive
+      RABBITMQ_DEFAULT_PASS: datahive123
+    networks:
+      - 519_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  519_auth_service:
+    build: ./519_auth_service
+    container_name: 519_auth_service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DB_HOST=519_postgres
+      - DB_USER=datahive
+      - DB_PASSWORD=datahive123
+      - DB_NAME=datahive
+      - DB_PORT=5432
+      - JWT_SECRET=519_datahive_jwt_secret_key
+    depends_on:
+      519_postgres:
+        condition: service_healthy
+    networks:
+      - 519_network
+    restart: on-failure
+
+  519_event_service:
+    build: ./519_event_service
+    container_name: 519_event_service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DB_HOST=519_postgres
+      - DB_USER=datahive
+      - DB_PASSWORD=datahive123
+      - DB_NAME=datahive
+      - DB_PORT=5432
+      - JWT_SECRET=519_datahive_jwt_secret_key
+      - RABBITMQ_URL=amqp://datahive:datahive123@519_rabbitmq:5672
+      - QUEUE_NAME=519_event_queue
+    depends_on:
+      519_postgres:
+        condition: service_healthy
+      519_rabbitmq:
+        condition: service_healthy
+    volumes:
+      - 519_logs:/app/logs
+    networks:
+      - 519_network
+    restart: on-failure
+
+  519_notification_service:
+    build: ./519_notification_service
+    container_name: 519_notification_service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - RABBITMQ_URL=amqp://datahive:datahive123@519_rabbitmq:5672
+      - QUEUE_NAME=519_event_queue
+    depends_on:
+      519_rabbitmq:
+        condition: service_healthy
+    volumes:
+      - 519_logs:/app/logs
+    networks:
+      - 519_network
+    restart: on-failure
+
+networks:
+  519_network:
+    name: 519_network
+    driver: bridge
+
+volumes:
+  519_postgres_data:
+    name: 519_postgres_data
+  519_logs:
+    name: 519_logs

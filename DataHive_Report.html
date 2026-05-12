@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12pt;
+    margin: 1in;
+    line-height: 1.6;
+    color: #000;
+  }
+  h1 {
+    font-size: 18pt;
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  h2 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    border-bottom: 1.5px solid #000;
+    padding-bottom: 4px;
+  }
+  h3 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+  h4 {
+    font-size: 12pt;
+    font-weight: bold;
+    font-style: italic;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+  .center { text-align: center; }
+  .meta { text-align: center; font-size: 11pt; margin-bottom: 2px; }
+  .divider { border: none; border-top: 2px solid #000; margin: 16px 0; }
+  pre, code {
+    font-family: "Courier New", monospace;
+    font-size: 10pt;
+    background: #f4f4f4;
+    border: 1px solid #ccc;
+    padding: 10px 14px;
+    display: block;
+    margin: 10px 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 11pt;
+  }
+  th {
+    background-color: #d9d9d9;
+    border: 1px solid #000;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: bold;
+  }
+  td {
+    border: 1px solid #000;
+    padding: 6px 10px;
+  }
+  ul, ol {
+    margin: 8px 0 8px 24px;
+  }
+  li {
+    margin-bottom: 4px;
+  }
+  .section-number {
+    font-weight: bold;
+  }
+  p {
+    margin: 8px 0;
+    text-align: justify;
+  }
+  .page-break { page-break-after: always; }
+  .highlight {
+    background-color: #f0f0f0;
+    padding: 8px 12px;
+    border-left: 4px solid #333;
+    margin: 10px 0;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<h1>DataHive Inc. — Backend System Technical Report</h1>
+<p class="meta"><strong>Course:</strong> CE408L Cloud Computing Lab</p>
+<p class="meta"><strong>Topic:</strong> Lightweight Lakehouse Logging</p>
+<p class="meta"><strong>Instructor:</strong> Dr. Safia Baloch</p>
+<p class="meta"><strong>Student Roll No:</strong> 519</p>
+<p class="meta"><strong>Institution:</strong> Ghulam Ishaq Khan Institute of Engineering Sciences and Technology</p>
+<p class="meta"><strong>Date:</strong> 12th May, Spring 2026</p>
+<hr class="divider">
+
+<p>This report documents the design, implementation, and workflow of two critical aspects of the DataHive Inc. backend microservices system: Distributed Systems Communication and Basic Analytical Data Ingestion Workflow. The system was developed as part of the CE408L Cloud Computing Lab Final Examination, demonstrating the practical application of modern cloud-native backend engineering principles.</p>
+
+<hr class="divider">
+
+<!-- ============================================================ -->
+<h2>1. Distributed Systems Communication</h2>
+<!-- ============================================================ -->
+
+<h3>1.1 Overview</h3>
+<p>
+The DataHive backend is architected as a <strong>distributed microservices system</strong> composed of three independent, loosely-coupled services. Each service owns its own responsibility, runs in its own Docker container, and communicates with other services either synchronously over HTTP/REST or asynchronously through a message broker (RabbitMQ). This design reflects real-world distributed systems principles including service isolation, fault tolerance, and asynchronous decoupling.
+</p>
+
+<p>The three core services and their responsibilities are summarized below:</p>
+
+<table>
+  <tr>
+    <th>Service</th>
+    <th>Container Name</th>
+    <th>Port</th>
+    <th>Responsibility</th>
+  </tr>
+  <tr>
+    <td>Authentication Service</td>
+    <td>519_auth_service</td>
+    <td>3001</td>
+    <td>User registration, login, and JWT token issuance</td>
+  </tr>
+  <tr>
+    <td>Event Service</td>
+    <td>519_event_service</td>
+    <td>3002</td>
+    <td>Create and view events; publishes events to RabbitMQ</td>
+  </tr>
+  <tr>
+    <td>Notification Service</td>
+    <td>519_notification_service</td>
+    <td>3003</td>
+    <td>Consumes RabbitMQ messages and logs notifications</td>
+  </tr>
+  <tr>
+    <td>PostgreSQL</td>
+    <td>519_postgres</td>
+    <td>5432</td>
+    <td>Persistent relational data store for users and events</td>
+  </tr>
+  <tr>
+    <td>RabbitMQ</td>
+    <td>519_rabbitmq</td>
+    <td>5672 / 15672</td>
+    <td>Message broker for asynchronous inter-service communication</td>
+  </tr>
+</table>
+
+<h3>1.2 Communication Patterns</h3>
+<p>The system employs two distinct communication patterns, each chosen deliberately based on the nature of the interaction required:</p>
+
+<h4>1.2.1 Synchronous Communication — REST over HTTP</h4>
+<p>
+Client-to-service interactions are handled via synchronous REST APIs built with <strong>Node.js and Express.js</strong>. When a client sends a request (e.g., to register a user or create an event), the service processes it and returns a response immediately. This pattern is appropriate for operations where the client needs an immediate result, such as authentication or data retrieval.
+</p>
+
+<p>The REST endpoints exposed by each service are as follows:</p>
+
+<table>
+  <tr>
+    <th>Method</th>
+    <th>Endpoint</th>
+    <th>Service</th>
+    <th>Description</th>
+    <th>Auth Required</th>
+  </tr>
+  <tr>
+    <td>POST</td>
+    <td>/auth/register</td>
+    <td>Auth Service</td>
+    <td>Register a new user</td>
+    <td>No</td>
+  </tr>
+  <tr>
+    <td>POST</td>
+    <td>/auth/login</td>
+    <td>Auth Service</td>
+    <td>Login and receive a JWT token</td>
+    <td>No</td>
+  </tr>
+  <tr>
+    <td>POST</td>
+    <td>/events</td>
+    <td>Event Service</td>
+    <td>Create a new event</td>
+    <td>Yes (JWT)</td>
+  </tr>
+  <tr>
+    <td>GET</td>
+    <td>/events</td>
+    <td>Event Service</td>
+    <td>Retrieve all events</td>
+    <td>Yes (JWT)</td>
+  </tr>
+  <tr>
+    <td>GET</td>
+    <td>/health</td>
+    <td>All Services</td>
+    <td>Health check endpoint</td>
+    <td>No</td>
+  </tr>
+</table>
+
+<h4>1.2.2 Asynchronous Communication — RabbitMQ Message Queue</h4>
+<p>
+Service-to-service communication for event notifications is handled <strong>asynchronously</strong> via <strong>RabbitMQ</strong>, an industry-standard message broker implementing the AMQP protocol. This decouples the Event Service from the Notification Service — the Event Service does not wait for the Notification Service to process the message before responding to the client.
+</p>
+
+<p>The asynchronous communication flow works as follows:</p>
+<ol>
+  <li>A client sends a <code>POST /events</code> request with a valid JWT token.</li>
+  <li>The Event Service validates the token, persists the event in PostgreSQL, and immediately responds to the client with a <code>201 Created</code> response.</li>
+  <li>The Event Service then publishes a JSON-serialized event message to the RabbitMQ queue named <code>519_event_queue</code> with <code>persistent: true</code> to ensure message durability.</li>
+  <li>The Notification Service, which maintains an open channel to RabbitMQ, receives the message asynchronously.</li>
+  <li>The Notification Service logs the notification to the console and writes a JSON notification log file to the shared volume.</li>
+  <li>The Notification Service acknowledges (<code>channel.ack</code>) the message, removing it from the queue.</li>
+</ol>
+
+<p>The publisher implementation in the Event Service is shown below:</p>
+<pre>
+// 519_event_service/src/publisher.js
+async function publishEvent(event) {
+  channel.sendToQueue(
+    QUEUE_NAME,
+    Buffer.from(JSON.stringify(event)),
+    { persistent: true }  // survives RabbitMQ restarts
+  );
+}
+</pre>
+
+<p>The consumer implementation in the Notification Service:</p>
+<pre>
+// 519_notification_service/src/consumer.js
+channel.consume(QUEUE_NAME, (msg) => {
+  const event = JSON.parse(msg.content.toString());
+  console.log(`[NOTIFICATION] New event received: "${event.title}"`);
+  // Write JSON notification log
+  fs.writeFile(filename, JSON.stringify(notificationLog, null, 2), ...);
+  channel.ack(msg);  // acknowledge message processed
+});
+</pre>
+
+<h3>1.3 JWT-Based Authentication Across Services</h3>
+<p>
+The system uses <strong>JSON Web Tokens (JWT)</strong> as a stateless, distributed authentication mechanism. When a user logs in via the Auth Service, a signed JWT is issued containing the user's ID, username, and email. This token is then passed by the client in the <code>Authorization: Bearer &lt;token&gt;</code> header on every subsequent request to the Event Service.
+</p>
+
+<p>
+A critical distributed systems principle is demonstrated here: the Event Service validates the JWT <strong>independently</strong> without calling back to the Auth Service. Since both services share the same <code>JWT_SECRET</code> environment variable, the Event Service can verify the token's authenticity locally. This eliminates a synchronous inter-service dependency and prevents the Auth Service from becoming a bottleneck.
+</p>
+
+<pre>
+// 519_event_service/src/middleware/auth.js
+function verifyToken(req, res, next) {
+  const token = req.headers['authorization']?.split(' ')[1];
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  req.user = decoded;
+  next();
+}
+</pre>
+
+<h3>1.4 Container Networking — 519_network</h3>
+<p>
+All five containers are connected via a dedicated Docker bridge network named <code>519_network</code>. Docker's internal DNS allows containers to resolve each other by their service name. For example, the Event Service connects to RabbitMQ at <code>amqp://519_rabbitmq:5672</code> and to PostgreSQL at <code>519_postgres:5432</code> — without needing hardcoded IP addresses.
+</p>
+
+<pre>
+# docker-compose.yml
+networks:
+  519_network:
+    name: 519_network
+    driver: bridge
+</pre>
+
+<h3>1.5 Fault Tolerance and Retry Logic</h3>
+<p>
+In distributed systems, services rarely start at exactly the same time. To handle this, both the Event Service and Notification Service implement <strong>connection retry logic</strong> for RabbitMQ. If RabbitMQ is not yet ready, the service retries the connection every 5 seconds for up to 10–15 attempts before giving up. This prevents cascading failures during container startup.
+</p>
+<p>
+Similarly, Docker Compose <code>healthcheck</code> configurations are defined for both PostgreSQL and RabbitMQ, ensuring dependent services only start after infrastructure is confirmed healthy:
+</p>
+<pre>
+519_postgres:
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U datahive"]
+    interval: 5s
+    retries: 10
+
+519_auth_service:
+  depends_on:
+    519_postgres:
+      condition: service_healthy
+</pre>
+
+<h3>1.6 System Communication Diagram</h3>
+<pre>
+┌─────────────┐     REST (JWT)      ┌─────────────────────┐
+│   Client    │────────────────────►│  519_auth_service   │──► PostgreSQL
+│  (Browser/  │                     │     Port 3001        │    (users table)
+│   Postman)  │                     └─────────────────────┘
+│             │
+│             │     REST (JWT)      ┌─────────────────────┐
+│             │────────────────────►│  519_event_service  │──► PostgreSQL
+└─────────────┘                     │     Port 3002        │    (events table)
+                                    └──────────┬──────────┘
+                                               │ Publishes
+                                               │ (AMQP)
+                                               ▼
+                                    ┌─────────────────────┐
+                                    │   519_rabbitmq      │
+                                    │  519_event_queue    │
+                                    └──────────┬──────────┘
+                                               │ Consumes
+                                               │ (AMQP)
+                                               ▼
+                                    ┌─────────────────────┐
+                                    │519_notification_svc │──► JSON Logs
+                                    │     Port 3003        │    (Volume)
+                                    └─────────────────────┘
+</pre>
+
+<div class="page-break"></div>
+
+<!-- ============================================================ -->
+<h2>2. Basic Analytical Data Ingestion Workflow</h2>
+<!-- ============================================================ -->
+
+<h3>2.1 Overview</h3>
+<p>
+The DataHive system implements a <strong>simplified lakehouse-style data ingestion pipeline</strong>. The concept of a data lakehouse combines the raw data storage capabilities of a data lake with the structured querying capabilities of a data warehouse. In this implementation, every event creation triggers an ingestion workflow that persists structured JSON records to a shared storage volume — simulating how real-world analytical pipelines ingest transactional data for future processing, reporting, and analytics.
+</p>
+
+<div class="highlight">
+  "Whenever a new event is created, the system stores event logs using JSON files for analytical/lakehouse-style ingestion." — Project Specification
+</div>
+
+<h3>2.2 Ingestion Architecture</h3>
+<p>The analytical ingestion pipeline consists of two parallel streams that are triggered simultaneously upon event creation:</p>
+
+<table>
+  <tr>
+    <th>Stream</th>
+    <th>Producer</th>
+    <th>Log Type</th>
+    <th>File Pattern</th>
+    <th>Purpose</th>
+  </tr>
+  <tr>
+    <td>Event Log</td>
+    <td>519_event_service</td>
+    <td>Raw event record</td>
+    <td>event_{id}_{timestamp}.json</td>
+    <td>Source of truth for event data analytics</td>
+  </tr>
+  <tr>
+    <td>Notification Log</td>
+    <td>519_notification_service</td>
+    <td>Notification receipt</td>
+    <td>notification_{id}_{timestamp}.json</td>
+    <td>Audit trail of notification delivery</td>
+  </tr>
+</table>
+
+<p>Both streams write to a shared Docker volume named <code>519_logs</code>, mounted at <code>/app/logs</code> inside the containers. This shared volume simulates a centralized data lake storage layer accessible by multiple services.</p>
+
+<h3>2.3 Ingestion Pipeline — Step by Step</h3>
+
+<h4>Step 1: Event Creation (Trigger)</h4>
+<p>The pipeline is triggered when a client sends a <code>POST /events</code> request to the Event Service with valid authentication. The request body contains the event data:</p>
+<pre>
+POST http://localhost:3002/events
+Authorization: Bearer &lt;JWT_TOKEN&gt;
+Content-Type: application/json
+
+{
+  "title": "DataHive Launch",
+  "description": "Company kickoff event",
+  "location": "Karachi",
+  "event_date": "2026-06-01"
+}
+</pre>
+
+<h4>Step 2: Persistence to Relational Database (Structured Storage)</h4>
+<p>The Event Service first persists the event to <strong>PostgreSQL</strong>, which serves as the structured, queryable layer of the lakehouse. The database record includes a system-generated ID and timestamp, creating an immutable record of the event:</p>
+<pre>
+INSERT INTO events (title, description, location, event_date, user_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *
+</pre>
+
+<h4>Step 3: JSON Log File Write (Raw Data Lake Layer)</h4>
+<p>
+Immediately after database persistence, the Event Service writes a structured <strong>JSON log file</strong> to the shared volume. This represents the raw data ingestion layer of the lakehouse — an append-only, immutable log of all events in their original form, enriched with ingestion metadata.
+</p>
+<p>The log file structure is:</p>
+<pre>
+// event_7_1747051234567.json
+{
+  "schema_version": "1.0",
+  "source": "519_event_service",
+  "ingested_at": "2026-05-12T10:30:00.000Z",
+  "event": {
+    "id": 7,
+    "title": "DataHive Launch",
+    "description": "Company kickoff event",
+    "location": "Karachi",
+    "event_date": "2026-06-01T00:00:00.000Z",
+    "user_id": 3,
+    "created_at": "2026-05-12T10:29:59.843Z"
+  }
+}
+</pre>
+
+<p>Key fields in the ingestion log:</p>
+<ul>
+  <li><strong>schema_version</strong> — Enables forward compatibility as the schema evolves over time.</li>
+  <li><strong>source</strong> — Identifies which service produced the log, critical for multi-service ingestion tracing.</li>
+  <li><strong>ingested_at</strong> — The exact UTC timestamp of ingestion (distinct from the event's own created_at), supporting time-travel queries.</li>
+  <li><strong>event</strong> — The complete, unmodified event record as stored in the database.</li>
+</ul>
+
+<h4>Step 4: Asynchronous Message Publication (Pipeline Trigger)</h4>
+<p>Simultaneously, the Event Service publishes the event to the <code>519_event_queue</code> RabbitMQ queue. This message acts as a pipeline trigger, notifying downstream consumers that new data is available for processing — a core pattern in modern event-driven data pipelines:</p>
+<pre>
+// publisher.js
+channel.sendToQueue(
+  '519_event_queue',
+  Buffer.from(JSON.stringify(event)),
+  { persistent: true }
+);
+</pre>
+
+<h4>Step 5: Notification Service Consumption and Notification Log Write</h4>
+<p>The Notification Service asynchronously consumes the message from the queue. It processes the event and writes a <strong>notification log file</strong> to the shared volume. This log represents an audit trail of notification delivery and serves as a second, independent data stream for analytics — for example, tracking notification latency or delivery success rates:</p>
+<pre>
+// notification_7_1747051235890.json
+{
+  "schema_version": "1.0",
+  "source": "519_notification_service",
+  "notification_type": "event_created",
+  "notified_at": "2026-05-12T10:30:01.234Z",
+  "event": {
+    "id": 7,
+    "title": "DataHive Launch",
+    ...
+  }
+}
+</pre>
+
+<h3>2.4 Shared Storage Volume — Simulating a Data Lake</h3>
+<p>
+Both services write to a Docker named volume <code>519_logs</code>, which is mounted into both the Event Service and the Notification Service containers at <code>/app/logs</code>. This simulates a centralized, shared object storage layer (analogous to AWS S3 or Azure Data Lake Storage in production environments).
+</p>
+
+<pre>
+# docker-compose.yml
+volumes:
+  519_logs:
+    name: 519_logs
+
+# Mounted in both services:
+volumes:
+  - 519_logs:/app/logs
+</pre>
+
+<p>The resulting log files on the volume represent a continuous, append-only stream of JSON records that can be:</p>
+<ul>
+  <li>Queried with tools like <strong>Apache Spark</strong> or <strong>DuckDB</strong> for batch analytics</li>
+  <li>Streamed into a data warehouse such as <strong>Snowflake</strong> or <strong>BigQuery</strong></li>
+  <li>Processed with <strong>Apache Kafka</strong> for real-time stream processing</li>
+  <li>Visualized in <strong>Apache Superset</strong> or <strong>Metabase</strong> dashboards</li>
+</ul>
+
+<h3>2.5 Complete Data Ingestion Flow Diagram</h3>
+<pre>
+Client Request
+     │
+     ▼
+POST /events (JWT Auth)
+     │
+     ▼
+┌────────────────────────────────────────────────┐
+│              519_event_service                  │
+│                                                 │
+│  1. Validate JWT token                          │
+│  2. INSERT into PostgreSQL events table  ──────►│──► PostgreSQL
+│  3. Write event_{id}_{ts}.json  ────────────── ►│──► 519_logs volume
+│  4. Publish to 519_event_queue  ────────────── ►│──► RabbitMQ
+│  5. Return 201 response to client               │
+└────────────────────────────────────────────────┘
+                         │
+                         │ (async, via RabbitMQ)
+                         ▼
+┌────────────────────────────────────────────────┐
+│          519_notification_service               │
+│                                                 │
+│  1. Consume message from 519_event_queue        │
+│  2. Log notification to console                 │
+│  3. Write notification_{id}_{ts}.json  ────────►│──► 519_logs volume
+│  4. ACK message (remove from queue)             │
+└────────────────────────────────────────────────┘
+                         │
+                         ▼
+              519_logs Docker Volume
+              ┌──────────────────────────────┐
+              │ event_1_1747051234.json       │
+              │ event_2_1747051289.json       │
+              │ notification_1_1747051235.json│
+              │ notification_2_1747051290.json│
+              │ ...                           │
+              └──────────────────────────────┘
+                  (Analytical Data Lake Layer)
+</pre>
+
+<h3>2.6 Lakehouse Pattern — Comparison with Production Systems</h3>
+
+<table>
+  <tr>
+    <th>Lakehouse Layer</th>
+    <th>Production Technology</th>
+    <th>DataHive Implementation</th>
+  </tr>
+  <tr>
+    <td>Raw Storage (Data Lake)</td>
+    <td>AWS S3, Azure ADLS, HDFS</td>
+    <td>Docker named volume (519_logs)</td>
+  </tr>
+  <tr>
+    <td>Structured Storage</td>
+    <td>Delta Lake, Apache Iceberg</td>
+    <td>PostgreSQL (events table)</td>
+  </tr>
+  <tr>
+    <td>Ingestion Format</td>
+    <td>Parquet, Avro, ORC</td>
+    <td>JSON files with schema_version</td>
+  </tr>
+  <tr>
+    <td>Pipeline Trigger</td>
+    <td>Apache Kafka, AWS Kinesis</td>
+    <td>RabbitMQ (519_event_queue)</td>
+  </tr>
+  <tr>
+    <td>Stream Consumer</td>
+    <td>Apache Flink, Spark Streaming</td>
+    <td>519_notification_service</td>
+  </tr>
+  <tr>
+    <td>Metadata</td>
+    <td>Apache Hive Metastore</td>
+    <td>schema_version, source, ingested_at fields</td>
+  </tr>
+</table>
+
+<h3>2.7 Key Design Principles</h3>
+<ul>
+  <li><strong>Append-Only Logs:</strong> JSON files are never overwritten — each event generates a new uniquely-named file. This ensures data immutability and supports time-travel analysis.</li>
+  <li><strong>Schema Versioning:</strong> The <code>schema_version: "1.0"</code> field in every log entry enables future schema evolution without breaking existing consumers.</li>
+  <li><strong>Separation of Ingestion Streams:</strong> Event logs and notification logs are kept separate, allowing independent analytics on event creation patterns vs. notification delivery performance.</li>
+  <li><strong>Source Tagging:</strong> Every log entry carries a <code>source</code> field, enabling multi-service log aggregation and provenance tracking in a real data lake environment.</li>
+  <li><strong>Dual-Layer Storage:</strong> The combination of PostgreSQL (for structured queries) and JSON files (for raw analytical access) mirrors the core lakehouse architecture principle of combining the best of data lakes and data warehouses.</li>
+</ul>
+
+<hr class="divider">
+
+<h2>3. Conclusion</h2>
+<p>
+The DataHive backend system successfully demonstrates two core principles of modern cloud-native engineering. The distributed systems communication layer employs both synchronous REST APIs for client-facing operations and asynchronous RabbitMQ messaging for inter-service event propagation, with JWT-based stateless authentication enabling secure, decentralized identity verification across services. The analytical data ingestion workflow implements a simplified but architecturally sound lakehouse pattern, using a dual-layer storage strategy of PostgreSQL for structured queries and append-only JSON file logs for raw data lake storage, both triggered through an event-driven pipeline.
+</p>
+<p>
+Together, these components form a scalable, fault-tolerant, and production-aligned microservices architecture that fulfills the requirements of the DataHive Inc. platform specification while demonstrating mastery of distributed systems design, containerized deployment, and analytical data engineering fundamentals.
+</p>
+
+<hr class="divider">
+<p class="center" style="font-size: 10pt; color: #555;">
+  CE408L Cloud Computing Lab | Ghulam Ishaq Khan Institute | Spring 2026 | Roll No: 519
+</p>
+
+</body>
+</html>
